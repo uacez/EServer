@@ -7,49 +7,34 @@ import Path from "@/main/utils/Path";
 import FileUtil from "@/main/utils/FileUtil";
 
 export default class ServerControl {
-
-    static WinPHPCGI_ProcessName = 'php-cgi.exe';
-    static WinPHPFPM_ProcessName = 'php-cgi-spawner.exe';
-
-
     /**
      * SoftwareItem
-     * @param softItem {SoftwareItem}
+     * @param item {SoftwareItem}
      * @returns {Promise<void>}
      */
-    static async start(softItem) {
-        const item = softItem;
-        let workPath = Software.getPath(item); //服务目录
-        let serverProcessPath = Path.Join(workPath, item.ServerProcessPath);  //服务的进程目录
-        let options = {cwd: workPath, detached: true};
+    static async start(item) {
+        const workPath = Software.getPath(item) //服务目录
+        const serverProcessPath = this.getControlProcessPath(item)
+        const options = { cwd: workPath, detached: true }
 
-        if (isWindows && item.ShellServerProcess) {
-            options = { cwd: workPath, shell: true } //使用shell，childProcess返回的pid是shell的pid
+        if (item.ShellServerProcess) {
+            options.detached = false
+            options.shell = true //使用shell，childProcess返回的pid是shell的pid
         }
 
         if (!await FileUtil.Exists(serverProcessPath)) {
             throw new Error(`${serverProcessPath} 文件不存在！`);
         }
 
-        let args = [];
-
+        let args = []
         if (item.StartServerArgs) {
-            args = item.StartServerArgs.map(arg => {
-                let argObj = {
-                    ServerProcessPath: serverProcessPath,
-                    WorkPath: workPath,
-                    ConfPath: item.ConfPath ? Path.Join(workPath, item.ConfPath) : null,
-                    ServerConfPath: item.ServerConfPath ? Path.Join(workPath, item.ServerConfPath) : null,
-                    ExtraProcessPath: item.ExtraProcessPath ? Path.Join(workPath, item.ExtraProcessPath) : null,
-                };
-                return parseTemplateStrings(arg, argObj);
-            })
+            args = this.parseServerArgs(item, item.StartServerArgs)
         }
 
-        item.isRunning = true;
-        item.errMsg = '';
+        item.isRunning = true
+        item.errMsg = ''
 
-        let childProcess = child_process.spawn(serverProcessPath, args, options);
+        const childProcess = child_process.spawn(serverProcessPath, args, options);
 
         childProcess.stderr.on('data', (data) => {
             console.log('stderr data',data?.toString())
@@ -67,13 +52,52 @@ export default class ServerControl {
         item.pid = childProcess.pid;
     }
 
-    /**
-     * SoftwareItem
-     * @param softItem{SoftwareItem}
-     * @returns {Promise<void>}
-     */
-    static async stop(softItem) {
-        await ProcessExtend.kill(softItem.pid);
+    static getControlProcessPath(item) {
+        const workPath = Software.getPath(item)
+        if (item.ControlProcessPath) {
+            return Path.Join(workPath, item.ControlProcessPath) //控制进程的目录
+        } else {
+            return Path.Join(workPath, item.ServerProcessPath) //服务进程的目录
+        }
     }
 
+    /**
+     *
+     * @param item{SoftwareItem}
+     * @returns {Promise<void>}
+     */
+    static async stop(item) {
+        const workPath = Software.getPath(item)
+        const options = { cwd: workPath, detached: true }
+        if (item.StopServerArgs) {
+            const args = this.parseServerArgs(item, item.StopServerArgs)
+            if (item.ShellServerProcess) {
+                options.detached = false
+                options.shell = true //使用shell，childProcess返回的pid是shell的pid
+            }
+            const serverProcessPath = this.getControlProcessPath(item)
+            child_process.spawn(serverProcessPath, args, options)
+        } else {
+            await ProcessExtend.kill(item.pid)
+        }
+    }
+
+    /**
+     *
+     * @param item{SoftwareItem}
+     * @param args{array}
+     */
+    static parseServerArgs(item, args) {
+        const workPath = Software.getPath(item)
+        return args.map((arg) => {
+            const argObj = {
+                WorkPath: workPath.replaceSlash(),
+                ServerProcessPath: Path.Join(workPath, item.ServerProcessPath).replaceSlash(),
+                ConfPath: item.ConfPath ? Path.Join(workPath, item.ConfPath).replaceSlash() : null,
+                ServerConfPath: item.ServerConfPath ? Path.Join(workPath, item.ServerConfPath).replaceSlash() : null,
+                ExtraProcessPath: item.ExtraProcessPath ? Path.Join(workPath, item.ExtraProcessPath).replaceSlash() : null
+            }
+            return parseTemplateStrings(arg, argObj)
+        })
+    }
 }
