@@ -1,7 +1,9 @@
 <template>
   <div class='title-bar draggable' @dblclick="dblclick">
-    <div class='notify color-text'>
-      {{ APP_NAME }} {{ t('notice') }}：<a class='non-draggable color-text' @click='clickUrl'>🎉{{ t('none') }}</a>
+    <div class='notice color-text'>
+      <span class="notice-icon">📢</span>：
+      <a class='non-draggable color-text' @click='clickUrl(store.noticeList?.[0]?.url)'>
+        {{ store.noticeList?.[0]?.title }}</a>
     </div>
     <div class='window-controls-container non-draggable color-text' v-if='isWindows'>
       <div class='window-icon codicon codicon-chrome-minimize '
@@ -27,22 +29,20 @@
 
 <script setup>
 import { ref } from 'vue'
-import Native from '@/main/utils/Native'
-import { t } from '@/renderer/utils/i18n'
+import Native from '@/renderer/utils/Native'
 import { isWindows } from '@/main/utils/utils'
-import { APP_NAME } from '@/shared/utils/constant'
-import { getCurrentWindow, switchMaximize } from '@/shared/utils/window'
-
-const mainWindow = getCurrentWindow()
+import { useMainStore } from '@/renderer/store'
+import Ipc from '@/renderer/utils/Ipc'
+const call = Ipc.call
 const isWindowMax = ref(false)
 const minimizeIsHover = ref(false)
 
-const clickUrl = () => {
-  Native.openUrl('http://www.eserver.app')
-}
+const store = useMainStore()
+
+const clickUrl = (url) => Native.openUrl(url)
 
 const minimizeClick = () => {
-  mainWindow.minimize()
+  call('windowMinimize')
   minimizeIsHover.value = false
 }
 
@@ -51,24 +51,26 @@ const dblclick = () => {
 }
 
 const maximizeClick = () => {
-  switchMaximize(mainWindow)
+  call('windowSwitchMax')
 }
 
 const closeClick = () => {
-  mainWindow.close()
+  call('windowClose')
 }
 
-mainWindow.on('maximize', () => {
+Ipc.on('mainWindowMaximize',() => {
   isWindowMax.value = true
 })
 
-mainWindow.on('unmaximize', () => {
+Ipc.on('mainWindowUnmaximize',() => {
   isWindowMax.value = false
 })
 </script>
 
 <style scoped lang="less">
-.notify {
+.notice {
+  display: flex;
+  place-items: center;
   margin-left: 10px;
   font-size: 14px;
   flex: 1;
@@ -76,10 +78,19 @@ mainWindow.on('unmaximize', () => {
   overflow: hidden;
   text-overflow: ellipsis;
 
-  a {
-    &:hover {
-      color: #1890ff;
-      cursor: pointer;
+  .notice-icon {
+    width: 24px;
+    animation: textSizeChange 1s infinite;
+    @keyframes textSizeChange {
+      0% {
+        font-size: 14px;
+      }
+      50% {
+        font-size: 16px;
+      }
+      100% {
+        font-size: 14px;
+      }
     }
   }
 }

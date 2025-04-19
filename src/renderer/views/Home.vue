@@ -1,74 +1,77 @@
 <template>
-  <div class='content-container'>
-    <a-card :title='t("ShortcutActions")' size="small">
-      <div class='quick-card-content'>
-        <a-button type='primary' @click='oneClickStart' :disabled='!!serverTableLoading'>
+  <div class="content-container">
+    <a-card :title="t('ShortcutActions')" size="small">
+      <div class="quick-card-content">
+        <a-button type="primary" @click="HomeService.oneClickStart" :disabled="!!serverTableLoading">
           {{ mt('OneClick', 'ws', 'Start') }}
         </a-button>
-        <a-button type='primary' @click='oneClickStop' :disabled='!!serverTableLoading'>
+        <a-button type="primary" @click="HomeService.oneClickStop" :disabled="!!serverTableLoading">
           {{ mt('OneClick', 'ws', 'Stop') }}
         </a-button>
-        <a-button type='primary' @click='corePathClick'>
-          {{ APP_NAME }} {{ mt('ws', 'Directory') }}
-        </a-button>
-        <a-button type='primary' @click='wwwPathClick'>
-          {{ mt('Website', 'ws', 'Directory') }}
-        </a-button>
+        <a-button type="primary" @click="dataDirClick"> {{ APP_NAME }} {{ mt('ws', 'Directory') }}</a-button>
+        <a-button type="primary" @click="cfgPathClick">{{ mt('Config', 'ws', 'Directory') }}</a-button>
       </div>
     </a-card>
 
-    <a-table :columns='columns' :data-source='serverList' class='content-table' :pagination='false' size='middle'
-             :loading='serverTableLoading' :scroll="{y: 'calc(100vh - 220px)'}">
-      <template #bodyCell='{ column, record}'>
+    <a-table
+      :columns="columns"
+      :data-source="serverList"
+      class="content-table"
+      :pagination="false"
+      size="middle"
+      :loading="serverTableLoading"
+      :scroll="{ y: 'calc(100vh - 220px)' }"
+    >
+      <template #bodyCell="{ column, record : item }">
         <template v-if="column.dataIndex === 'name'">
-          <div>
-            {{ record.ServerName ? record.ServerName : record.Name }}
+          <div>{{ item.ServerName ? item.ServerName : item.Name }}
+            <a-tag v-if="item.IsCustom">{{t('Custom')}}</a-tag>
           </div>
         </template>
         <template v-if="column.dataIndex === 'status'">
-          <div style='font-size: 20px;'>
-            <RightSquareFilled class='status-stop' v-if='!record.isRunning' />
-            <RightSquareFilled class='status-start' v-if='record.isRunning' />
+          <div style="font-size: 20px">
+            <RightSquareFilled class="status-stop" v-if="!item.isRunning" />
+            <RightSquareFilled class="status-start" v-if="item.isRunning" />
           </div>
         </template>
 
         <template v-if="column.dataIndex === 'operate'">
-          <div class='operate-td'>
-            <a-button type='primary' @click='startServerClick(record)' v-if='!record.isRunning'
-                      :loading='record.btnLoading'>
+          <div class="operate-td">
+            <a-button type="primary" @click="HomeService.startServerClick(item)"
+                      v-if="!item.isRunning" :loading="item.btnLoading">
               <template #icon>
                 <PoweroffOutlined />
               </template>
-              {{t("Start")}}
+              {{ t('Start') }}
             </a-button>
-            <a-button type='primary' @click='stopServerClick(record)' v-if='record.isRunning'
-                      :loading='record.btnLoading'>
+            <a-button type="primary" @click="HomeService.stopServerClick(item)"
+                      v-if="item.isRunning" :loading="item.btnLoading">
               <template #icon>
                 <PoweroffOutlined />
               </template>
-              {{t("Stop")}}
+              {{ t('Stop') }}
             </a-button>
-            <a-button type='primary' @click='restartServerClick(record)'
-                      :loading='record.btnLoading' :disabled='!record.isRunning'>
+            <a-button type="primary" @click="HomeService.restartServerClick(item)"
+                      :loading="item.btnLoading" :disabled="!item.isRunning">
               <template #icon>
                 <ReloadOutlined />
               </template>
-              {{t("Restart")}}
+              {{ t('Restart') }}
             </a-button>
             <a-dropdown :trigger="['click']">
               <template #overlay>
                 <a-menu>
-                  <a-menu-item @click='openInstallDir(record)' key='999'>
-                    {{ mt('Open','ws','Directory') }}
+                  <a-menu-item @click="openWorkDir(item)" key="999">
+                    {{ mt('Open', 'ws', 'Directory') }}
                   </a-menu-item>
-                  <a-menu-item v-if='record.ConfPath' @click='openConfFile(record)' key='998'>
-                    {{ mt('Open','ws') }}{{ Path.GetBaseName(record.ConfPath) }}
+                  <a-menu-item v-if="item.ConfPath" @click="openConfFile(item)" key="998">
+                    {{ mt('Open', 'ws') }}{{ path.basename(item.ConfPath) }}
                   </a-menu-item>
-                  <a-menu-item v-if='record.ServerConfPath' @click='openServerConfFile(record)' key='997'>
-                    {{ mt('Open','ws') }}{{ Path.GetBaseName(record.ServerConfPath) }}
+                  <a-menu-item v-if="item.ServerConfPath" @click="openServerConfFile(item)" key="997">
+                    {{ mt('Open', 'ws') }}{{ path.basename(item.ServerConfPath) }}
                   </a-menu-item>
-                  <a-menu-item v-for='(item,i) in record.ExtraFiles' :key='i' @click='openExtraFile(record,item)'>
-                    {{ mt('Open','ws') }}{{ item.Name }}
+                  <a-menu-item v-for="item2 in item.ExtraFiles" @click="openExtraFile(item, item2)">
+                    {{ mt('Open', 'ws') }}{{ item2.Name }}
                   </a-menu-item>
                 </a-menu>
               </template>
@@ -82,32 +85,28 @@
 </template>
 
 <script setup>
-var timestamp = new Date().getTime()
-
-import { inject, onMounted, ref, watch } from 'vue'
+import { onMounted, ref} from 'vue'
 import { useMainStore } from '@/renderer/store'
-import GetPath from '@/shared/utils/GetPath'
-import GetAppPath from '@/main/utils/GetAppPath'
-import Software from '@/main/core/software/Software'
-import ServerControl from '@/main/core/ServerControl'
-import MessageBox from '@/renderer/utils/MessageBox'
+import GetDataPath from '@/shared/utils/GetDataPath'
+import ChildApp from '@/main/services/childApp/ChildApp'
 import { storeToRefs } from 'pinia/dist/pinia'
 import { APP_NAME } from '@/shared/utils/constant'
-import Native from '@/main/utils/Native'
-import { sleep } from '@/shared/utils/utils'
-import Path from '@/main/utils/Path'
+import Native from '@/renderer/utils/Native'
+import path from 'path'
 import ProcessExtend from '@/main/utils/ProcessExtend'
-import Settings from '@/main/Settings'
-import SoftwareExtend from '@/main/core/software/SoftwareExtend'
-import TcpProcess from '@/main/utils/TcpProcess'
+import HomeService from '@/renderer/services/HomeService'
 import { isWindows } from '@/main/utils/utils'
 import { createAsyncComponent } from '@/renderer/utils/utils'
 import { mt, t } from '@/renderer/utils/i18n'
+import { StoreInitializedEventName } from '@/renderer/utils/constant'
+import Settings from '@/main/Settings'
+import CustomChildApp from '@/main/services/childApp/CustomChildApp'
+import FsUtil from '@/main/utils/FsUtil'
+import Ipc from '@/renderer/utils/Ipc'
+
+const timestamp = new Date().getTime()
 
 const serverTableLoading = ref(false)
-const { serverReactive } = inject('GlobalProvide')
-serverReactive.restartFn = restartServerClick
-serverReactive.startPhpFpmFn = startPhpFpm
 
 const AButton = createAsyncComponent(import('ant-design-vue'), 'Button')
 const ADropdown = createAsyncComponent(import('ant-design-vue'), 'Dropdown')
@@ -121,12 +120,14 @@ const columns = [
     title: t('Name'),
     width: 180,
     dataIndex: 'name'
-  }, {
+  },
+  {
     title: t('Status'),
     dataIndex: 'status',
     width: 100,
     align: 'center'
-  }, {
+  },
+  {
     title: t('Operation'),
     dataIndex: 'operate',
     align: 'center'
@@ -134,211 +135,83 @@ const columns = [
 ]
 
 const store = useMainStore()
-const { serverList,afterOpenAppStartServerNum } = storeToRefs(store)
+const { serverList } = storeToRefs(store)
 
+window.addEventListener(StoreInitializedEventName, async () => {
+  loadingHandle().then(() => {
+    store.Home.firstLoadingHandled = true
+    //“打开软件后，启动服务”功能，必须等待读取server列表状态。避免server真实状态是“启动”，重复启动软件。
+    if (Settings.get('AfterOpenAppStartServer')) {
+      HomeService.oneClickStart()
+    }
+  })
+})
 
 onMounted(async () => {
-  var timestamp2 = new Date().getTime()
-  console.log('home onMounted', timestamp2 - timestamp)
-
-  if (serverList.value) {
-    serverTableLoading.value = { tip: `${t('RefreshingServer')}...` }
-    await initServerListStatus()
-    serverTableLoading.value = false
-  }
-
-  if (Settings.get('AfterOpenAppStartServer') && afterOpenAppStartServerNum.value >= 1) {
-    afterOpenAppStartServerNum.value -= 1
-    oneClickStart()
+  console.log('Home onMounted ms:', (new Date().getTime()) - timestamp)
+  //devConsoleLog('Home onMounted ms:', () => (new Date().getTime()) - timestamp)
+  if (store.Home.firstLoadingHandled){
+    loadingHandle()
   }
 })
 
+const loadingHandle = async () => {
+  serverTableLoading.value = { tip: `${t('RefreshingServer')}...` }
+  await initServerListStatus()
+  serverTableLoading.value = false
+}
+
 const getProcessList = async () => {
-  let list;
-  const options = { directory: GetPath.getSoftwareDir() }
+  let list
+  let pathList = CustomChildApp.getServerProcessPathList()
+  pathList = await Promise.all(pathList.map(async p => await FsUtil.ParseSymbolicLink(p)))
+  const options = {directory: GetDataPath.getChildAppDir(), pathList}
   if (isWindows) {
-    list = await window.api.callStatic('ProcessLibrary', 'getList', options)
+    list = await Ipc.callStatic('ProcessLibrary', 'getList', options)
   } else {
     list = await ProcessExtend.getList(options)
   }
-  //过滤掉子进程，剔除子进程
-  let newList = []
-  for (const item of list) {
-    if (!list.find(item2 => item2.pid === item.ppid)) {
-      newList.push([item.path, item.pid])
-    }
-  }
-  return newList
+
+  return list.map(item => [item.path, item.pid])
 }
 
 const initServerListStatus = async () => {
   const processList = await getProcessList()
   const processMap = new Map(processList)
-
   const initServerStatus = async (item) => {
-    const itemProcessPath = Software.getServerProcessPath(item)
-    const pid = processMap.get(itemProcessPath)
-    if (pid) {
-      item.isRunning = true
-      item.pid = pid
-    } else {
-      item.isRunning = false
-      item.pid = null
-    }
+    const servPath = item.IsCustom ? await FsUtil.ParseSymbolicLink(path.normalize(item.ServerProcessPath)) : ChildApp.getServerProcessPath(item)
+    const pid = processMap.get(servPath)
+    item.isRunning = !!pid
+    item.pid = pid ?? null
   }
 
-  const promiseArray = serverList.value.map(item => initServerStatus(item))
+  const promiseArray = serverList.value.map((item) => initServerStatus(item))
   await Promise.all(promiseArray)
-};
-
-const corePathClick = () => {
-  Native.openDirectory(GetAppPath.getUserCoreDir())
-}
-const wwwPathClick = () => {
-  Native.openDirectory(GetPath.getWebsiteDir())
 }
 
-const openInstallDir = (item) => {
-  Native.openDirectory(Software.getPath(item))
+const dataDirClick = () => Native.openDirectory(GetDataPath.getDir())
+const cfgPathClick = () => Native.openDirectory(GetDataPath.getEtcDir())
+const openWorkDir = (item) => {
+  const p = item.IsCustom ?  path.dirname(item.ServerProcessPath) :ChildApp.getDir(item)
+  Native.openDirectory(p)
 }
 
 const openConfFile = (item) => {
-  Native.openTextFile(Software.getConfPath(item))
+  const p = item.IsCustom ? item.ConfPath : ChildApp.getConfPath(item)
+  Native.openTextFile(p)
 }
-
 const openServerConfFile = (item) => {
-  Native.openTextFile(Software.getServerConfPath(item))
+  const p = item.IsCustom ? item.ServerConfPath : ChildApp.getServerConfPath(item)
+  Native.openTextFile(p)
 }
-
 const openExtraFile = (item, extraFile) => {
-  Native.openTextFile(Path.Join(Software.getPath(item), extraFile.Path))
+  const p = item.IsCustom ? extraFile.Path : ChildApp.getCommonPath(item, extraFile.Path)
+  Native.openTextFile(p)
 }
-
-const getNginxRequirePhpList = async () => {
-  const list = await SoftwareExtend.getNginxRequirePhpList()
-  return list.map(item => `PHP-${item}`)
-}
-
-const oneClickStart = async () => {
-  const oneClickServerList = ref(Settings.get('OneClickServerList'))
-  //oneClickServerIncludePhpFpm 基本上默认为true
-  const oneClickServerIncludePhpFpm = oneClickServerList.value.includes('PHP-FPM')
-  const requirePhpList = await getNginxRequirePhpList()
-  const doStartServerClick = async (item) => {
-    if (oneClickServerList.value.includes(item.Name)) {
-      startServerClick(item)
-    } else if (item.Name.match(/^PHP-[.\d]+$/) && requirePhpList.includes(item.Name) && oneClickServerIncludePhpFpm) {
-      startServerClick(item)
-    }
-  }
-
-  for (const item of serverList.value) {
-    doStartServerClick(item)
-  }
-}
-
-const oneClickStop = async () => {
-  const oneClickServerList = ref(Settings.get('OneClickServerList'))
-  //oneClickServerIncludePhpFpm 基本上默认为true
-  const oneClickServerIncludePhpFpm = oneClickServerList.value.includes('PHP-FPM')
-  const requirePhpList = await getNginxRequirePhpList()
-  const doStopServerClick = async (item) => {
-    if (oneClickServerList.value.includes(item.Name)) {
-      stopServerClick(item)
-    } else if (item.Name.match(/^PHP-[.\d]+$/) && requirePhpList.includes(item.Name) && oneClickServerIncludePhpFpm) {
-      stopServerClick(item)
-    }
-  }
-
-  for (const item of serverList.value) {
-    doStopServerClick(item)
-  }
-}
-
-const startServerClick = async (item) => {
-  if (item.isRunning || item.btnLoading) {
-    return
-  }
-  item.btnLoading = true
-  try {
-    if (item.ServerPort) {
-      if (item.ServerPort == 80) {
-        await ProcessExtend.killWebServer()
-      } else {
-        await TcpProcess.killByPort(item.ServerPort)
-      }
-    }
-
-    await ServerControl.start(item)
-    if (!item.unwatch) {
-      item.unwatch = watch(() => item.errMsg, (errMsg) => {
-        if (errMsg) {
-          MessageBox.error(errMsg, '启动服务出错！')
-        }
-      })
-    }
-  } catch (error) {
-    MessageBox.error(error.message ?? error, '启动服务出错！')
-  }
-  item.btnLoading = false
-}
-
-async function restartServerClick(item) {
-  item.btnLoading = true
-  try {
-    await ServerControl.stop(item)
-
-    for (let i = 0; i < 10; i++) {
-      if (item.isRunning === false) {
-        break
-      }
-      await sleep(500)
-      item.isRunning = ProcessExtend.pidIsRunning(item.pid)
-    }
-
-    if (item.isRunning) {
-      throw new Error('服务没有成功停止！')
-    }
-
-    await ServerControl.start(item)
-  } catch (error) {
-    MessageBox.error(error.message ?? error, '重启服务出错！')
-  }
-  item.btnLoading = false
-}
-
-const stopServerClick = async (item) => {
-  if (!item.isRunning) {
-    return
-  }
-  item.btnLoading = true
-  try {
-    await ServerControl.stop(item)
-
-    for (let i = 0; i < 10; i++) {
-      if (item.isRunning === false) {
-        break
-      }
-      await sleep(500)
-      item.isRunning = ProcessExtend.pidIsRunning(item.pid)
-    }
-  } catch (error) {
-    MessageBox.error(error.message ?? error, '停止服务出错！')
-  }
-  item.btnLoading = false
-}
-
-async function startPhpFpm(phpVersion) {
-  let item = serverList.value.find(item => item.Name === `PHP-${phpVersion}`)
-  if (item) {
-    await startServerClick(item)
-  }
-}
-
 </script>
 
-<style scoped lang='less'>
-@import "@/renderer/assets/css/var";
+<style scoped lang="less">
+@import '@/renderer/assets/css/var';
 
 :deep(td) {
   height: 57px;
@@ -352,11 +225,10 @@ async function startPhpFpm(phpVersion) {
   color: @colorErrorActive;
 }
 
-
 .quick-card-content {
   height: calc(@controlHeight * 1px);
   display: flex;
-  justify-content: space-around
+  justify-content: space-around;
 }
 
 .operate-td {

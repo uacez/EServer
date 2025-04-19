@@ -1,48 +1,44 @@
 <template>
-  <a-modal
-    title="Set Language"
-    v-model:open="visible"
-    centered :maskClosable="false">
+  <a-modal title="Set Language" v-model:open="visible" centered :maskClosable="false">
     <div class="modal-content">
       <span> {{ t('Language') }} (Language)：</span>
       <a-select
-        v-model:value='store.settings.Language'
-        :options='languageOptions' @change='languageChange'
-        placeholder='请选择' style='width: 200px'
+        v-model:value="store.settings.Language"
+        :options="languageOpts"
+        @change="languageChange"
+        placeholder="请选择"
+        style="width: 200px"
       ></a-select>
     </div>
     <template #footer>
-      <a-button key="submit" type="primary"  @click="handleOk">{{t('Confirm')}}</a-button>
+      <a-button key="submit" type="primary" @click="handleOk">{{ t('Confirm') }}</a-button>
     </template>
   </a-modal>
 </template>
 
 <script setup>
-import {t} from "@/renderer/utils/i18n";
-import {computed} from "vue";
-import Settings from "@/main/Settings";
-import MessageBox from "@/renderer/utils/MessageBox";
-import { useI18n } from 'vue-i18n'
+import { t } from '@/renderer/utils/i18n'
+import { computed } from 'vue'
+import Settings from '@/main/Settings'
+import MessageBox from '@/renderer/utils/MessageBox'
 import { useMainStore } from '@/renderer/store'
 import { changeLanguageWrapper } from '@/renderer/utils/language'
 
-const { locale } = useI18n()
-const props =  defineProps({
-  show:Boolean,
-})
+const props = defineProps({ show: Boolean })
 const emit = defineEmits(['update:show'])
 const store = useMainStore()
 const visible = computed({
   get() {
-    return props.show;
+    return props.show
   },
   set(value) {
-    emit('update:show', value);
+    emit('update:show', value)
   }
-});
-const languageOptions= [
+})
+const languageOpts = [
   { label: '中文', value: 'zh' },
   { label: 'English', value: 'en' },
+  { label: 'Français', value: 'fr' }
 ]
 
 const handleOk = () => {
@@ -54,14 +50,11 @@ const languageChange = async () => {
   try {
     Settings.set('Language', store.settings.Language)
     await changeLanguageWrapper(store.settings.Language)
-    store.loadingTip = t('Initializing')
+    store.loadingTip = t('Initializing') //todo 删除这行？
   } catch (error) {
     MessageBox.error(error.message ?? error, t('errorOccurredDuring', [t('set')]))
   }
-
 }
 </script>
 
-<style scoped>
-
-</style>
+<style scoped></style>

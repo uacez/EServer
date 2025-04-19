@@ -30,23 +30,25 @@ import RewriteSetting from '@/renderer/components/WebSite/EditWebSite/RewriteSet
 import SslSetting from '@/renderer/components/WebSite/EditWebSite/SslSetting.vue'
 import Settings from '@/main/Settings'
 import { mt, t } from '@/renderer/utils/i18n'
-import { useMainStore } from '@/renderer/store'
+import ChildAppExtend from '@/main/services/childApp/ChildAppExtend'
+import ServerService from '@/renderer/services/ServerService'
+import WebsiteService from '@/renderer/services/WebsiteService'
 
 const { serverName, port, editModalVisible: visible } = inject('WebsiteProvide')
 const defaultKey = 'basicSetting'
 const activeKey = ref(defaultKey)
-const { serverReactive } = inject('GlobalProvide')
-const store = useMainStore()
 
 const editAfter = (phpVersion = '') => {
-  if (store.nginxServer.isRunning && Settings.get('AutoStartAndRestartServer')) {
-    serverReactive.restartFn(store.nginxServer)
+  if (Settings.get('AutoStartAndRestartServer') && ServerService.isRunning('Nginx')) {
+    ServerService.restart('Nginx')
     if (phpVersion) {
-      serverReactive.startPhpFpmFn(phpVersion)
+      const phpOptions = WebsiteService.getPhpOptions()
+      const option = phpOptions.find(item => item.value === phpVersion)
+      const phpName = option.isCustom ? option.label : ChildAppExtend.getPhpName(phpVersion)
+      ServerService.restart(phpName)
     }
   }
 }
-
 </script>
 
 <style scoped lang='less'>

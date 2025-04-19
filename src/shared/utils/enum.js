@@ -1,4 +1,4 @@
-export const EnumSoftwareInstallStatus = {
+export const EnumChildAppInstallStatus = {
     Ready: 0,
     Active: 1,
     Downloading: 2,
@@ -8,12 +8,6 @@ export const EnumSoftwareInstallStatus = {
     Extracted: 6,
     ExtractError: 7,
     Configuring: 8,
-    Abort:100,
-    Finish: 200,
-}
-
-export const EnumSoftwareType = {
-    PHP: 0,
-    Server: 1,
-    Tool: 2,
+    Abort: 100,
+    Finish: 200
 }

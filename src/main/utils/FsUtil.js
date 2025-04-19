@@ -1,6 +1,7 @@
 import fsPromises, { constants } from 'fs/promises'
 import { isWindows } from '@/main/utils/utils'
-import Command from '@/main/utils/Command'
+import Shell from '@/main/utils/Shell'
+import nodePath from 'path'
 
 export default class FsUtil {
     /**
@@ -25,18 +26,45 @@ export default class FsUtil {
         return await fsPromises.rename(oldPath, newPath)
     }
 
+    static async Delete(path, options = { force: true, recursive: true }) {
+        return await FsUtil.Remove(path, options)
+    }
+
     static async Remove(path, options = {}) {
         return await fsPromises.rm(path, options)
     }
 
     /**
-     * 创建符号链接
+     * 创建符号链接。Windows需要管理员权限
      * @param path {string} 符号链接的路径
      * @param pathToTarget {string} 符号链接指向的目标的路径
      * @returns {undefined}
      */
     static async CreateSymbolicLink(path, pathToTarget) {
-        return await fsPromises.symlink(pathToTarget, path)
+        if (!isWindows) { //Linux symlink 路径哪怕是目录，结尾也不能带/。否则创建规则变了
+            path = path?.replace(/\/$/, '')
+        }
+
+        const stats = await fsPromises.stat(pathToTarget)
+        const type = stats.isDirectory() ? 'dir' : 'file'
+
+        return await fsPromises.symlink(pathToTarget, path, type)
+    }
+
+    static async ParseSymbolicLink(path) {
+        if (!await FsUtil.Exists(path)) {
+            return path
+        }
+        const stats = await fsPromises.lstat(path)
+        if (stats.isSymbolicLink()) {
+            const target = await fsPromises.readlink(path)
+            if (nodePath.isAbsolute(target)) {
+                return target
+            }
+            return nodePath.resolve(nodePath.dirname(path), target)
+        } else {
+            return path
+        }
     }
 
     /**
@@ -57,7 +85,7 @@ export default class FsUtil {
         if (isWindows) {
             await fsPromises.chmod(path, 0o666)
         } else {
-            await Command.sudoExec(`chmod 666 ${path}`)
+            await Shell.sudoExec(`chmod 666 ${path}`)
         }
     }
 }

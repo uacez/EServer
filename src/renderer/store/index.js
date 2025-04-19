@@ -1,56 +1,70 @@
 import { defineStore } from 'pinia'
-import Software from '@/main/core/software/Software'
-import { enumGetName } from '@/shared/utils/utils'
-import { EnumSoftwareType } from '@/shared/utils/enum'
+import ChildApp from '@/main/services/childApp/ChildApp'
 import Settings from '@/main/Settings'
 import MessageBox from '@/renderer/utils/MessageBox'
 import { t } from '@/renderer/utils/i18n'
 import SystemTheme from '@/main/utils/SystemTheme'
 import { theme } from 'ant-design-vue'
 import { setTwoToneColor } from '@ant-design/icons-vue'
-import { color } from '@/renderer/utils/constant'
+import { colorConst } from '@/shared/utils/constant'
+import { filterServerList } from '@/shared/utils/childApp'
+import CustomChildApp from '@/main/services/childApp/CustomChildApp'
 
 export const useMainStore = defineStore('main', {
     state: () => {
         return {
-            softwareList: [], //软件列表
-            nginxServer: null,
-            softwareTypeSelected: '',
+            childAppList: [], //子应用列表，不包含自定义的
+            customChildAppList: [], //自定义子应用列表
+            installedChildAppList: [], //已安装的子应用列表，不包含自定义的
+            childAppTypeSelected: '',
             loading: false,
             loadingTip: 'Loading',
             settings: {},
             customTheme: {},
             websiteList: { showSecondDomainName: false, showNote: false },
-            afterOpenAppStartServerNum: 1,
+            Home: {
+                firstLoadingHandled: false
+            },
+            ChildApp: {
+                installInfoMap: {},
+                selectedType: '',
+                listened: false
+            },
+            noticeList:[]
         }
     },
     getters: {
-        //已安装的server软件列表
+        //server列表，包含自定义的
         serverList(state) {
-            let phpTypeName = enumGetName(EnumSoftwareType, EnumSoftwareType.PHP)
-            let serverTypeName = enumGetName(EnumSoftwareType, EnumSoftwareType.Server)
-            let typeArr = [phpTypeName, serverTypeName]
-
-            return state.softwareList.filter(item => item.Installed && typeArr.includes(item.Type))
+            return filterServerList([...state.installedChildAppList,...state.customChildAppList])
         }
     },
     actions: {
         async init() {
-            await this.refreshSoftwareList()
+            await this.refreshChildAppList()
+            await this.refreshCustomChildAppList()
         },
-        async refreshSoftwareList() {
-            const list = await Software.getList()
-            this.softwareList = await Promise.all(list.map(async item => {
-                const Installed = await Software.IsInstalled(item)
+        async refreshChildAppList() {
+            const list = await ChildApp.getList()
+            this.childAppList = await Promise.all(list.map(async item => {
+                const Installed = await ChildApp.IsInstalled(item)
                 return { ...item, Installed }
             }))
-            this.nginxServer = this.softwareList.find((item) => item.Name === 'Nginx')
+            this.refreshInstalledList()
         },
-        async setSettings(key, callback = null) {
+        async refreshInstalledList(){
+            this.installedChildAppList = this.childAppList.filter(item => item.Installed)
+        },
+        async refreshCustomChildAppList() {
+            let customChildAppList = await CustomChildApp.getList() //自定义子应用，不判断是否已安装
+            customChildAppList = customChildAppList.map(item => ({ ...item, IsCustom: true }))
+            this.customChildAppList = customChildAppList
+        },
+        async setSettings(key, beforeFunc = null) {
             const originVal = Settings.get(key)
             try {
-                if (callback) {
-                    const res = await callback(originVal)
+                if (beforeFunc) {
+                    const res = await beforeFunc(originVal)
                     if (res === false) {
                         return
                     }
@@ -73,13 +87,13 @@ export const useMainStore = defineStore('main', {
          changeTheme(modeStr, primaryColor) {
             const isDark = modeStr === 'dark' || (modeStr === 'system' && SystemTheme.isDarkModel())
             let customToken = {
-                colorBgLayout: color.light.bgColor,
+                colorBgLayout: colorConst.light.bgColor,
                 colorPrimary: primaryColor,
                 borderRadius: 5
             }
 
             let darkToken = {
-                colorBgLayout: color.dark.bgColor,
+                colorBgLayout: colorConst.dark.bgColor,
                 colorBgContainer: '#303030',
                 colorBorderSecondary: 'rgba(255, 255, 255, 0.06)',
                 colorSplit: 'rgba(255, 255, 255, 0.06)',

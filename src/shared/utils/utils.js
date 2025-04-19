@@ -1,5 +1,9 @@
 //通用且与项目无关的方法
 
+export function isASCII(str) {
+    return /^[\x00-\x7F]*$/.test(str)
+}
+
 export function extendPrototype() {
     /**
      * 将反斜杠替换成正斜杠
@@ -32,8 +36,14 @@ export function enumGetName(enumObj, val) {
     }
 }
 
-export function parseTemplateStrings(str, argObj) {
-    return str.replace(/\${(.+?)}/g, (match, p1) => argObj[p1] ?? '');
+/**
+ * 将变量名字符串解析成变量值
+ * @param varStr {string} 变量名字符串，例如 ${ConfPath}
+ * @param varMap {object}
+ * @returns {string}
+ */
+export function parseTemplateStrings(varStr, varMap) {
+    return varStr.replace(/\${(.+?)}/g, (match, p1) => varMap[p1] ?? '')
 }
 
 export function sleep(ms) {
@@ -46,17 +56,30 @@ export function sleep(ms) {
  * @returns {string}
  */
 export function replaceSlash(str) {
-    return str.replaceAll("\\", "/")
+    return str.replaceAll('\\', '/')
 }
 
 export function getFileSizeText(byte, defaultVal = 0) {
     byte = byte ? byte : defaultVal
     if (byte > 1024 * 1024) {
-        return parseInt(byte / (1024 * 1024)) + 'MB'
+        return (byte / (1024 * 1024)).toFixed(1) + 'MB'
     }
     return parseInt(byte / 1024) + 'KB'
 }
 
 export function isRendererProcess() {
     return process.type === 'renderer'
+}
+
+/**
+ *
+ * @param error {Error}
+ * @returns {Error}
+ */
+export function getIpcError(error) {
+    const regx = /':\s(\w*Error):\s(.*)/
+    const match = error.message.match(regx)
+    const err = new Error(match[2])
+    err.name = match[1]
+    return err
 }

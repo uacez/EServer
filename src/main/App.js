@@ -1,50 +1,49 @@
-import { electronRequire } from '@/main/utils/electron'
 import { isDev, isMacOS, isWindows } from '@/main/utils/utils'
 import path from 'path'
-import { MAC_USER_CORE_DIR, InitFiles_DIR_NAME, TEMP_DIR_NAME } from '@/main/utils/constant'
+import { MAC_DATA_DIR, InitFiles_DIR_NAME, TEMP_DIR_NAME } from '@/main/utils/constant'
+import GetPath from '@/shared/utils/GetPath'
+import GetCorePath from '@/shared/utils/GetCorePath'
+import GetDataPath from '@/shared/utils/GetDataPath'
 import DirUtil from '@/main/utils/DirUtil'
 import FileUtil from '@/main/utils/FileUtil'
-import Path from '@/main/utils/Path'
-import Software from '@/main/core/software/Software'
-import GetPath from '@/shared/utils/GetPath'
-import LocalInstall from '@/main/core/software/LocalInstall'
+import ChildApp from '@/main/services/childApp/ChildApp'
+import LocalInstall from '@/main/services/childApp/LocalInstall'
 import FsUtil from '@/main/utils/FsUtil'
-import GetAppPath from '@/main/utils/GetAppPath'
-import Command from '@/main/utils/Command'
+import Shell from '@/main/utils/Shell'
 import { extractZip } from '@/main/utils/extract'
-
-const app = electronRequire('app')
+import CommonInstall from '@/main/services/childApp/CommonInstall'
+import Php from '@/main/services/php/Php'
+import Env from '@/main/services/Env/Env'
+import Settings from '@/main/Settings'
+import ChildAppExtend from '@/main/services/childApp/ChildAppExtend'
+import ChildAppInit from '@/main/services/childApp/ChildAppInit'
 
 export default class App {
-    static getVersion() {
-        return app.getVersion()
-    }
-
     static async initFileExists() {
-        return await FileUtil.Exists(GetAppPath.getInitFilePath())
+        return await FileUtil.Exists(GetCorePath.getInitFilePath())
     }
 
     static async init() {
-        const initFile = GetAppPath.getInitFilePath()
+        const initFile = GetCorePath.getInitFilePath()
 
         if (!await FileUtil.Exists(initFile)) {
             return
         }
-
-        const softwareDirExists = await Software.DirExists()
+        //SoftwareDir为老的结构
+        const childAppDirExists = await ChildApp.DirExists() ||  await DirUtil.Exists(GetDataPath.getSoftwareDir())
 
         if (isMacOS && !isDev) {
-            if (!await DirUtil.Exists(MAC_USER_CORE_DIR)) {
-                await DirUtil.Create(MAC_USER_CORE_DIR)
+            if (!await DirUtil.Exists(MAC_DATA_DIR)) {
+                await DirUtil.Create(MAC_DATA_DIR)
             }
-            await this.updateMacCoreSubDir(['Library'])
+            await this.updateMacDataSubDir(['Library'])
         }
 
-        await this.moveInitFiles(['downloads', 'www'])
-        await this.createCoreSubDir(['software', 'database', 'bin', `${TEMP_DIR_NAME}/php`])
+        await this.moveInitFiles(['downloads', 'www', 'custom'])
+        await this.createUserSubDir(['etc', 'childApp', 'database', 'bin', `${TEMP_DIR_NAME}/php`])
 
-        if (!softwareDirExists) { //目录不存在说明是第一次安装，不是覆盖安装
-            const files = await DirUtil.GetFiles(GetPath.getDownloadsDir())
+        if (!childAppDirExists) { //目录不存在说明是第一次安装，不是覆盖安装
+            const files = await DirUtil.GetFiles(GetDataPath.getDownloadsDir())
             await LocalInstall.installMultiple(files)
         }
 
@@ -52,20 +51,20 @@ export default class App {
     }
 
     static async deleteInitFile() {
-        const initFile = GetAppPath.getInitFilePath()
+        const initFile = GetCorePath.getInitFilePath()
         if (await FileUtil.Exists(initFile)) {
             await FileUtil.Delete(initFile)
         }
     }
 
     static async checkInstall(){
-        const appPath = GetAppPath.getDir()
+        const appPath = GetPath.getDir()
         if (appPath.includes(' ')) {
             throw new Error('安装路径不能包含空格！')
         }
 
-        if (/[\u4e00-\u9fa5]/.test(appPath)) {
-            throw new Error('安装路径不能包含中文！')
+        if (/[\u2E80-\u9FFF]/.test(appPath)) {
+            throw new Error('安装路径不能包含中文等汉字！')
         }
 
         if (isWindows) {
@@ -79,44 +78,76 @@ export default class App {
         }
     }
 
-    //覆盖安装，执行update
+    /**
+     * 覆盖安装，执行update，返回 needRestart
+     * @returns {Promise<boolean>}
+     */
     static async update() {
         if (isDev) {
             return
         }
-
+        let needRestart = false
         if (isMacOS) {
-            await this.updateMacCoreSubDir(['Library'])
+            await this.updateMacDataSubDir(['Library'])
+        }
+        await this.moveInitFiles(['downloads', 'www', 'custom', 'custom/childApp'])
+
+        //目录childApp改名为childApp
+        if (!await ChildApp.DirExists()) {
+            needRestart = true
+            await FsUtil.Copy(GetDataPath.getSoftwareDir(), GetDataPath.getChildAppDir(), { recursive: true })
         }
 
-        //下面update逻辑，用于更新 UserCoreDir
-        const updateDir = Path.Join(GetAppPath.getCoreDir(), 'update')
-        if (await DirUtil.Exists(updateDir)) {
-            const updateJson = await FileUtil.ReadAll(Path.Join(updateDir, 'update.json'))
-            const updateObj = JSON.parse(updateJson)
-            const updateFile = Path.Join(updateDir, updateObj.archiveFile)
-            if (await FileUtil.Exists(updateFile)) {
-                extractZip(updateFile, Path.Join(GetAppPath.getUserCoreDir(), updateObj.targetDir))
+        //迁移配置文件到etc目录，并初始化
+        const list = await ChildApp.getList()
+        for (const item of list) {
+            if (await DirUtil.Exists(ChildApp.getDir(item))) {
+                await CommonInstall.configure(item)
             }
         }
+        //update包更新逻辑
+        const updateDir = path.join(GetCorePath.getDir(), 'update')
+        if (await DirUtil.Exists(updateDir)) {
+            const updateJson = await FileUtil.ReadAll(path.join(updateDir, 'update.json'))
+            const updateObj = JSON.parse(updateJson)
+            const updateFile = path.join(updateDir, updateObj.archiveFile)
+            if (await FileUtil.Exists(updateFile)) {
+                extractZip(updateFile, path.join(GetDataPath.getDir(), updateObj.targetDir))
+            }
+        }
+
+        if (Settings.get('PhpCliVersion')) {
+            const confPath = Php.getConfPath(Settings.get('PhpCliVersion'))
+            const exePath = GetDataPath.getPhpExePath(Settings.get('PhpCliVersion'))
+            Env.createBinFile(exePath, 'php', `-c "${confPath}"`)
+        }
+
+        if (!isWindows) {
+            const phpList = await ChildAppExtend.getPHPList()
+            for (const item of phpList) {
+                ChildAppInit.fixPhpBin(item.version)
+            }
+        }
+
+        return needRestart
     }
 
     /**
-     *  Mac更新User Core目录下的文件
+     *  Mac更新data目录下的文件
      * @param dirs
      */
-    static async updateMacCoreSubDir(dirs) {
-        let corePath = GetAppPath.getCoreDir()
+    static async updateMacDataSubDir(dirs) {
+        const coreDir = GetCorePath.getDir()
         for (const dir of dirs) {
-            let source = Path.Join(corePath, dir)
+            let source = path.join(coreDir, dir)
             if (!await DirUtil.Exists(source)) {
                 continue
             }
-            let target = Path.Join(MAC_USER_CORE_DIR, dir)
+            let target = path.join(MAC_DATA_DIR, dir)
             if (!await DirUtil.Exists(target)) {
                 await DirUtil.Create(target)
             }
-            await Command.exec(`rsync -a ${source}/* ${target}`)
+            await Shell.exec(`rsync -a ${source}/* ${target}`)
             await DirUtil.Delete(source)
         }
     }
@@ -125,9 +156,9 @@ export default class App {
      * 创建目录，如果目录不存在的情况下
      * @param dirs
      */
-    static async createCoreSubDir(dirs) {
+    static async createUserSubDir(dirs) {
         for (const dir of dirs) {
-            let p = path.join(GetAppPath.getUserCoreDir(), dir)
+            let p = path.join(GetDataPath.getDir(), dir)
             if (!await DirUtil.Exists(p)) {
                 await DirUtil.Create(p)
             }
@@ -135,25 +166,20 @@ export default class App {
     }
 
     /**
-     * 将initFiles目录下的文件（文件夹）移动到用户操作的核心目录
+     * 将initFiles目录下的文件（和目录）移动到用户的目录，如果已存在，则跳过。
      * @param files
      */
     static async moveInitFiles(files = []) {
-        let initFilesPath = Path.Join(GetAppPath.getCoreDir(), InitFiles_DIR_NAME)
+        let initFilesPath = path.join(GetCorePath.getDir(), InitFiles_DIR_NAME)
         for (const file of files) {
-            const source = Path.Join(initFilesPath, file)
-            const target = Path.Join(GetAppPath.getUserCoreDir(), file)
+            const source = path.join(initFilesPath, file)
+            const target = path.join(GetDataPath.getDir(), file)
 
             if (await FsUtil.Exists(target)) {
-                FsUtil.Remove(source, { force: true, recursive: true }) //不捕捉错误
+                FsUtil.Delete(source) //不捕捉错误
             } else {
                 await FsUtil.Rename(source, target)
             }
         }
     }
-
-    static exit() {
-        app.exit()
-    }
-
 }

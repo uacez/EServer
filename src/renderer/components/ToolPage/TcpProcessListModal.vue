@@ -46,12 +46,12 @@ import ProcessExtend from '@/main/utils/ProcessExtend'
 import { DownOutlined } from '@ant-design/icons-vue'
 import MessageBox from '@/renderer/utils/MessageBox'
 import TcpProcess from '@/main/utils/TcpProcess'
-import Native from '@/main/utils/Native'
+import Native from '@/renderer/utils/Native'
 import { message } from 'ant-design-vue'
 import { isWindows } from '@/main/utils/utils'
 import { mt, t } from '@/renderer/utils/i18n'
 
-const props = defineProps(['show'])
+const props = defineProps({ show: Boolean })
 const emit = defineEmits(['update:show'])
 const visible = computed({
   get() {
@@ -146,7 +146,7 @@ const kill = async (item) => {
       return
     }
   }
-  await ProcessExtend.kill(item.pid)
+  await ProcessExtend.kill(item.pid, true)
   await search()
 }
 
